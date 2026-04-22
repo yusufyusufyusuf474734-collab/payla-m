@@ -24,9 +24,7 @@ class MainActivity : ComponentActivity() {
 
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == RESULT_OK) startVpnService()
-    }
+    ) { if (it.resultCode == RESULT_OK) startVpnService() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,20 +37,16 @@ class MainActivity : ComponentActivity() {
                 var usbActive by remember { mutableStateOf(false) }
                 var hotspotInfo by remember { mutableStateOf<Pair<String, String>?>(null) }
                 var clients by remember { mutableStateOf<List<ConnectedClient>>(emptyList()) }
-                var hotspotIface by remember { mutableStateOf("ap0") }
-                var usbIface by remember { mutableStateOf("rndis0") }
-
-                val mobileIface = remember { NatManager.detectMobileInterface() }
 
                 hotspotManager.onStarted = { ssid, pass ->
                     hotspotInfo = Pair(ssid, pass)
                     hotspotActive = true
-                    NatManager.enable(outInterface = mobileIface, inInterface = hotspotIface)
+                    NatManager.enable(NatManager.detectHotspotInterface())
                 }
                 hotspotManager.onStopped = {
                     hotspotActive = false
                     hotspotInfo = null
-                    NatManager.disable(outInterface = mobileIface, inInterface = hotspotIface)
+                    NatManager.disable(NatManager.detectHotspotInterface())
                 }
 
                 MainScreen(
@@ -61,27 +55,21 @@ class MainActivity : ComponentActivity() {
                     usbActive = usbActive,
                     hotspotInfo = hotspotInfo,
                     clients = clients,
-                    hotspotIface = hotspotIface,
-                    usbIface = usbIface,
                     onVpnToggle = { enabled ->
                         if (enabled) requestVpnPermission() else stopVpnService()
                         vpnActive = enabled
                     },
-                    onHotspotToggle = { enabled ->
-                        if (enabled) hotspotManager.start() else hotspotManager.stop()
-                    },
+                    onHotspotToggle = { if (it) hotspotManager.start() else hotspotManager.stop() },
                     onUsbToggle = { enabled ->
                         if (UsbTetheringManager.setEnabled(enabled)) {
                             usbActive = enabled
-                            if (enabled) NatManager.enable(mobileIface, usbIface)
-                            else NatManager.disable(mobileIface, usbIface)
+                            if (enabled) NatManager.enable(NatManager.detectUsbInterface())
+                            else NatManager.disable(NatManager.detectUsbInterface())
                         }
                     },
                     onRefreshClients = {
                         lifecycleScope.launch { clients = ClientScanner.scan() }
-                    },
-                    onHotspotIfaceChange = { hotspotIface = it },
-                    onUsbIfaceChange = { usbIface = it }
+                    }
                 )
             }
         }
@@ -92,9 +80,6 @@ class MainActivity : ComponentActivity() {
         if (intent != null) vpnPermissionLauncher.launch(intent) else startVpnService()
     }
 
-    private fun startVpnService() =
-        startService(Intent(this, NetShareVpnService::class.java))
-
-    private fun stopVpnService() =
-        startService(Intent(this, NetShareVpnService::class.java).apply { action = "STOP" })
+    private fun startVpnService() = startService(Intent(this, NetShareVpnService::class.java))
+    private fun stopVpnService() = startService(Intent(this, NetShareVpnService::class.java).apply { action = "STOP" })
 }

@@ -1,57 +1,52 @@
 package com.netshare.nat
 
 import android.util.Log
+import java.net.NetworkInterface
 
 object NatManager {
 
     private const val TAG = "NatManager"
 
-    // Hotspot interface genellikle wlan1 veya ap0, USB tethering rndis0
-    fun enable(outInterface: String, inInterface: String) {
-        runRootCommands(
-            // IP forwarding aç
+    fun enable(inInterface: String) {
+        val out = detectMobileInterface()
+        runRoot(
             "echo 1 > /proc/sys/net/ipv4/ip_forward",
-            // Gelen trafiği internete yönlendir (MASQUERADE = dinamik NAT)
-            "iptables -t nat -A POSTROUTING -o $outInterface -j MASQUERADE",
-            // Forward zinciri — gelen ve giden trafiğe izin ver
-            "iptables -A FORWARD -i $inInterface -o $outInterface -j ACCEPT",
-            "iptables -A FORWARD -i $outInterface -o $inInterface -m state --state RELATED,ESTABLISHED -j ACCEPT"
+            "iptables -t nat -A POSTROUTING -o $out -j MASQUERADE",
+            "iptables -A FORWARD -i $inInterface -o $out -j ACCEPT",
+            "iptables -A FORWARD -i $out -o $inInterface -m state --state RELATED,ESTABLISHED -j ACCEPT"
         )
-        Log.d(TAG, "NAT enabled: $inInterface -> $outInterface")
+        Log.d(TAG, "NAT enabled: $inInterface -> $out")
     }
 
-    fun disable(outInterface: String, inInterface: String) {
-        runRootCommands(
-            "iptables -t nat -D POSTROUTING -o $outInterface -j MASQUERADE",
-            "iptables -D FORWARD -i $inInterface -o $outInterface -j ACCEPT",
-            "iptables -D FORWARD -i $outInterface -o $inInterface -m state --state RELATED,ESTABLISHED -j ACCEPT",
-            "echo 0 > /proc/sys/net/ipv4/ip_forward"
+    fun disable(inInterface: String) {
+        val out = detectMobileInterface()
+        runRoot(
+            "iptables -t nat -D POSTROUTING -o $out -j MASQUERADE",
+            "iptables -D FORWARD -i $inInterface -o $out -j ACCEPT",
+            "iptables -D FORWARD -i $out -o $inInterface -m state --state RELATED,ESTABLISHED -j ACCEPT"
         )
-        Log.d(TAG, "NAT disabled")
     }
 
-    fun detectMobileInterface(): String {
-        // Aktif mobil veri interface'ini bul (rmnet0, wwan0, vs.)
-        return try {
-            val result = Runtime.getRuntime()
-                .exec(arrayOf("su", "-c", "ip route show default"))
+    fun detectHotspotInterface(): String =
+        NetworkInterface.getNetworkInterfaces()?.toList()
+            ?.firstOrNull { it.isUp && !it.isLoopback && (it.name.startsWith("ap") || it.name.startsWith("wlan1") || it.name.startsWith("softap")) }
+            ?.name ?: "ap0"
+
+    fun detectUsbInterface(): String =
+        NetworkInterface.getNetworkInterfaces()?.toList()
+            ?.firstOrNull { it.isUp && !it.isLoopback && (it.name.startsWith("rndis") || it.name.startsWith("usb")) }
+            ?.name ?: "rndis0"
+
+    fun detectMobileInterface(): String =
+        try {
+            Runtime.getRuntime().exec(arrayOf("su", "-c", "ip route show default"))
                 .inputStream.bufferedReader().readText()
-            // "default via X.X.X.X dev rmnet0" satırından interface'i çek
-            result.lines()
-                .firstOrNull { it.contains("default") }
-                ?.split(" ")
-                ?.let { parts -> parts.getOrNull(parts.indexOf("dev") + 1) }
-                ?: "rmnet0"
+                .lines().firstOrNull { it.contains("default") }
+                ?.split(" ")?.let { it.getOrNull(it.indexOf("dev") + 1) } ?: "rmnet0"
         } catch (_: Exception) { "rmnet0" }
-    }
 
-    private fun runRootCommands(vararg commands: String) {
-        commands.forEach { cmd ->
-            try {
-                Runtime.getRuntime().exec(arrayOf("su", "-c", cmd)).waitFor()
-            } catch (e: Exception) {
-                Log.e(TAG, "Command failed: $cmd", e)
-            }
-        }
+    private fun runRoot(vararg cmds: String) = cmds.forEach {
+        try { Runtime.getRuntime().exec(arrayOf("su", "-c", it)).waitFor() }
+        catch (e: Exception) { Log.e(TAG, "Failed: $it", e) }
     }
 }
