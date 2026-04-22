@@ -12,6 +12,7 @@ import androidx.lifecycle.lifecycleScope
 import com.netshare.clients.ClientScanner
 import com.netshare.clients.ConnectedClient
 import com.netshare.hotspot.HotspotManager
+import com.netshare.nat.NatManager
 import com.netshare.ui.MainScreen
 import com.netshare.usb.UsbTetheringManager
 import com.netshare.vpn.NetShareVpnService
@@ -42,10 +43,15 @@ class MainActivity : ComponentActivity() {
                 hotspotManager.onStarted = { ssid, pass ->
                     hotspotInfo = Pair(ssid, pass)
                     hotspotActive = true
+                    // Hotspot interface'i ap0 veya wlan1 olabilir, mobil veri interface'ini otomatik bul
+                    val mobileIface = NatManager.detectMobileInterface()
+                    NatManager.enable(outInterface = mobileIface, inInterface = "ap0")
                 }
                 hotspotManager.onStopped = {
                     hotspotActive = false
                     hotspotInfo = null
+                    val mobileIface = NatManager.detectMobileInterface()
+                    NatManager.disable(outInterface = mobileIface, inInterface = "ap0")
                 }
 
                 MainScreen(
@@ -62,7 +68,12 @@ class MainActivity : ComponentActivity() {
                         if (enabled) hotspotManager.start() else hotspotManager.stop()
                     },
                     onUsbToggle = { enabled ->
-                        if (UsbTetheringManager.setEnabled(enabled)) usbActive = enabled
+                        if (UsbTetheringManager.setEnabled(enabled)) {
+                            usbActive = enabled
+                            val mobileIface = NatManager.detectMobileInterface()
+                            if (enabled) NatManager.enable(outInterface = mobileIface, inInterface = "rndis0")
+                            else NatManager.disable(outInterface = mobileIface, inInterface = "rndis0")
+                        }
                     },
                     onRefreshClients = {
                         lifecycleScope.launch {
