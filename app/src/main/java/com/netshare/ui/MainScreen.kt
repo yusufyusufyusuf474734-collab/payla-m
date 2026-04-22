@@ -17,20 +17,20 @@ fun MainScreen(
     usbActive: Boolean,
     hotspotInfo: Pair<String, String>?,
     clients: List<ConnectedClient>,
+    hotspotIface: String,
+    usbIface: String,
     onVpnToggle: (Boolean) -> Unit,
     onHotspotToggle: (Boolean) -> Unit,
     onUsbToggle: (Boolean) -> Unit,
-    onRefreshClients: () -> Unit
+    onRefreshClients: () -> Unit,
+    onHotspotIfaceChange: (String) -> Unit,
+    onUsbIfaceChange: (String) -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            Text("NetShare", style = MaterialTheme.typography.headlineMedium)
-        }
+        item { Text("NetShare", style = MaterialTheme.typography.headlineMedium) }
 
         item {
             ToggleCard(title = "VPN Tüneli", checked = vpnActive, onToggle = onVpnToggle) {
@@ -44,12 +44,16 @@ fun MainScreen(
                     StatusText("SSID: ${hotspotInfo.first}")
                     StatusText("Şifre: ${hotspotInfo.second}")
                 }
+                Spacer(Modifier.height(8.dp))
+                IfaceField(label = "Hotspot arayüzü", value = hotspotIface, onChange = onHotspotIfaceChange)
             }
         }
 
         item {
             ToggleCard(title = "USB Tethering", checked = usbActive, onToggle = onUsbToggle) {
                 if (usbActive) StatusText("Aktif (Root)")
+                Spacer(Modifier.height(8.dp))
+                IfaceField(label = "USB arayüzü", value = usbIface, onChange = onUsbIfaceChange)
             }
         }
 
@@ -77,6 +81,17 @@ fun MainScreen(
             }
         }
     }
+}
+
+@Composable
+private fun IfaceField(label: String, value: String, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 @Composable

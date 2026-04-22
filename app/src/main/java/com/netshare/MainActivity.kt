@@ -39,19 +39,20 @@ class MainActivity : ComponentActivity() {
                 var usbActive by remember { mutableStateOf(false) }
                 var hotspotInfo by remember { mutableStateOf<Pair<String, String>?>(null) }
                 var clients by remember { mutableStateOf<List<ConnectedClient>>(emptyList()) }
+                var hotspotIface by remember { mutableStateOf("ap0") }
+                var usbIface by remember { mutableStateOf("rndis0") }
+
+                val mobileIface = remember { NatManager.detectMobileInterface() }
 
                 hotspotManager.onStarted = { ssid, pass ->
                     hotspotInfo = Pair(ssid, pass)
                     hotspotActive = true
-                    // Hotspot interface'i ap0 veya wlan1 olabilir, mobil veri interface'ini otomatik bul
-                    val mobileIface = NatManager.detectMobileInterface()
-                    NatManager.enable(outInterface = mobileIface, inInterface = "ap0")
+                    NatManager.enable(outInterface = mobileIface, inInterface = hotspotIface)
                 }
                 hotspotManager.onStopped = {
                     hotspotActive = false
                     hotspotInfo = null
-                    val mobileIface = NatManager.detectMobileInterface()
-                    NatManager.disable(outInterface = mobileIface, inInterface = "ap0")
+                    NatManager.disable(outInterface = mobileIface, inInterface = hotspotIface)
                 }
 
                 MainScreen(
@@ -60,6 +61,8 @@ class MainActivity : ComponentActivity() {
                     usbActive = usbActive,
                     hotspotInfo = hotspotInfo,
                     clients = clients,
+                    hotspotIface = hotspotIface,
+                    usbIface = usbIface,
                     onVpnToggle = { enabled ->
                         if (enabled) requestVpnPermission() else stopVpnService()
                         vpnActive = enabled
@@ -70,16 +73,15 @@ class MainActivity : ComponentActivity() {
                     onUsbToggle = { enabled ->
                         if (UsbTetheringManager.setEnabled(enabled)) {
                             usbActive = enabled
-                            val mobileIface = NatManager.detectMobileInterface()
-                            if (enabled) NatManager.enable(outInterface = mobileIface, inInterface = "rndis0")
-                            else NatManager.disable(outInterface = mobileIface, inInterface = "rndis0")
+                            if (enabled) NatManager.enable(mobileIface, usbIface)
+                            else NatManager.disable(mobileIface, usbIface)
                         }
                     },
                     onRefreshClients = {
-                        lifecycleScope.launch {
-                            clients = ClientScanner.scan()
-                        }
-                    }
+                        lifecycleScope.launch { clients = ClientScanner.scan() }
+                    },
+                    onHotspotIfaceChange = { hotspotIface = it },
+                    onUsbIfaceChange = { usbIface = it }
                 )
             }
         }
